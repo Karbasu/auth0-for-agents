@@ -89,6 +89,26 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
                             ┌──────────┬───────────┴──────┬──────────┐
                             ▼          ▼                  ▼          │
                         Gmail API  GitHub API       Calendar API     │
+
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                      Next.js Dashboard                               │
+│                                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐ │
+│  │  Connection   │  │   Scope      │  │      AI's Perspective      │ │
+│  │  Panel        │  │   Toggles    │  │                            │ │
+│  │               │  │              │  │  ┌─────────┐ ┌──────────┐ │ │
+│  │  Gmail    ✓   │  │  ○ readonly  │  │  │ AI sees │ │ Hidden   │ │ │
+│  │  GitHub   ✓   │  │  ○ compose   │  │  │ 8 tools │ │ 5 tools  │ │ │
+│  │  Calendar ✓   │  │  ○ send      │  │  │ (green) │ │ (gray)   │ │ │
+│  └──────────────┘  └──────────────┘  │  └─────────┘ └──────────┘ │ │
+│                                       └────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  Tool Catalog (grouped by service, click to expand scopes)    │  │
+│  ├────────────────────────────────────────────────────────────────┤  │
+│  │  Audit Trail — every invocation with timing + status          │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Token Flow (Step by Step)
@@ -171,11 +191,13 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 
 ## Dashboard
 
-The Next.js web dashboard provides real-time visibility into the authorization state:
+The Next.js web dashboard provides real-time visibility and control over the authorization state:
 
-- **Connection Panel** — Shows which services (Gmail, GitHub, Calendar) are connected via Auth0, with live status
-- **Tool Grid** — All 13 tools with available/restricted status. Click any tool to see its required scopes vs. your granted scopes (green = granted, red = missing)
-- **Audit Log** — Live feed of every tool invocation with timing and success/failure status
+- **Connection Panel** — Shows which services (Gmail, GitHub, Calendar) are connected via Auth0 Token Vault, with live status
+- **Scope Control** — Interactive toggle switches for every OAuth scope, grouped by service. Flip a switch and watch tool availability update instantly — Authorization by Omission visualized in real-time
+- **AI's Perspective** — Split-panel view showing what the AI can see (left, green) vs. what's hidden (right, gray with strikethrough). Tools move between panels live as you toggle scopes
+- **Tool Catalog** — All 13 tools grouped by service with read/write badges. Click any tool to see its required scopes vs. your granted scopes (green = granted, red = missing)
+- **Audit Trail** — Live feed of every tool invocation with timing and success/failure status
 
 ---
 
@@ -298,7 +320,9 @@ auth0-for-agents/
 │           │   └── api/             # REST endpoints (connections, tools, audit)
 │           ├── components/
 │           │   ├── connection-panel.tsx  # Service connection status cards
-│           │   ├── tool-grid.tsx         # Tool availability grid with scope details
+│           │   ├── scope-toggles.tsx     # Interactive scope toggle switches
+│           │   ├── ai-view.tsx           # Split "AI sees" vs "Hidden" panel
+│           │   ├── tool-grid.tsx         # Tool catalog grouped by service
 │           │   └── audit-log.tsx         # Real-time audit log viewer
 │           └── lib/
 │               ├── token-vault.ts   # Auth0 client for dashboard

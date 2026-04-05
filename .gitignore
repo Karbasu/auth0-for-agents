@@ -8,5 +8,8 @@ packages/dashboard/.env
 .turbo
 coverage/
 .claude/
-docs/
+docs/ideas-*.md
+docs/research-*.md
+docs/hackathon-strategy.md
+docs/second-submission-ideas.md
 *.db
