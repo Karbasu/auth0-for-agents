@@ -5,6 +5,7 @@ export const listLabels: ToolDef = {
   name: "list_labels",
   description: "List all Gmail labels for the authenticated user.",
   service: "gmail",
+  type: "read",
   requiredScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   inputSchema: z.object({}),
   async execute(_args, accessToken) {

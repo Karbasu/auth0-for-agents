@@ -6,6 +6,7 @@ export const createComment: ToolDef = {
   description:
     "Add a comment to a GitHub issue.",
   service: "github",
+  type: "write",
   requiredScopes: ["repo"],
   inputSchema: z.object({
     owner: z.string().describe("Repository owner"),

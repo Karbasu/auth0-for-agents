@@ -6,6 +6,7 @@ export const listIssues: ToolDef = {
   description:
     "List issues for a GitHub repository.",
   service: "github",
+  type: "read",
   requiredScopes: ["repo"],
   inputSchema: z.object({
     owner: z.string().describe("Repository owner (user or org)"),

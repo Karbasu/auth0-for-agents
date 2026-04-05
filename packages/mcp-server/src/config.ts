@@ -1,4 +1,11 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import { fileURLToPath } from "url";
+import path from "path";
+
+// Load .env from monorepo root (two levels up from packages/mcp-server/dist)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });  // from dist/ -> mcp-server -> packages -> root
+dotenv.config(); // also try CWD as fallback
 
 function required(key: string): string {
   const val = process.env[key];
@@ -17,6 +24,7 @@ export const config = {
     clientSecret: required("AUTH0_CLIENT_SECRET"),
     audience: required("AUTH0_AUDIENCE"),
   },
+  userId: required("AUTH0_USER_ID"),
   scopes: {
     gmail: optional("GMAIL_SCOPES")
       .split(",")

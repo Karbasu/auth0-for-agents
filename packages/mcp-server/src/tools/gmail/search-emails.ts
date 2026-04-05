@@ -6,6 +6,7 @@ export const searchEmails: ToolDef = {
   description:
     "Search Gmail messages using a query string (same syntax as the Gmail search box).",
   service: "gmail",
+  type: "read",
   requiredScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   inputSchema: z.object({
     query: z.string().describe("Gmail search query (e.g. 'from:alice subject:hackathon')"),

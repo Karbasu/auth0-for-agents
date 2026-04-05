@@ -3,6 +3,10 @@ dist/
 .next/
 .env
 .env.local
+packages/dashboard/.env
 *.tsbuildinfo
 .turbo
 coverage/
+.claude/
+docs/
+*.db

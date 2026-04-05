@@ -6,6 +6,7 @@ export const listEvents: ToolDef = {
   description:
     "List upcoming events from the user's primary Google Calendar.",
   service: "calendar",
+  type: "read",
   requiredScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
   inputSchema: z.object({
     maxResults: z

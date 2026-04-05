@@ -2,16 +2,24 @@ import { NextResponse } from "next/server";
 
 /** Complete tool catalog with scope requirements */
 const TOOL_CATALOG = [
+  // Gmail (read)
   { name: "search_emails", service: "gmail", requiredScopes: ["https://www.googleapis.com/auth/gmail.readonly"], type: "read" },
   { name: "read_email", service: "gmail", requiredScopes: ["https://www.googleapis.com/auth/gmail.readonly"], type: "read" },
   { name: "list_labels", service: "gmail", requiredScopes: ["https://www.googleapis.com/auth/gmail.readonly"], type: "read" },
+  // Gmail (write)
   { name: "create_draft", service: "gmail", requiredScopes: ["https://www.googleapis.com/auth/gmail.compose"], type: "write" },
+  { name: "send_email", service: "gmail", requiredScopes: ["https://www.googleapis.com/auth/gmail.send"], type: "write" },
+  // GitHub (read)
   { name: "list_repos", service: "github", requiredScopes: ["repo", "read:user"], type: "read" },
   { name: "list_issues", service: "github", requiredScopes: ["repo"], type: "read" },
   { name: "read_issue", service: "github", requiredScopes: ["repo"], type: "read" },
+  // GitHub (write)
   { name: "create_comment", service: "github", requiredScopes: ["repo"], type: "write" },
+  { name: "create_issue", service: "github", requiredScopes: ["repo"], type: "write" },
+  // Calendar (read)
   { name: "list_events", service: "calendar", requiredScopes: ["https://www.googleapis.com/auth/calendar.readonly"], type: "read" },
   { name: "get_event", service: "calendar", requiredScopes: ["https://www.googleapis.com/auth/calendar.readonly"], type: "read" },
+  // Calendar (write)
   { name: "create_event", service: "calendar", requiredScopes: ["https://www.googleapis.com/auth/calendar.events"], type: "write" },
 ];
 
@@ -32,5 +40,5 @@ export async function GET() {
     return { ...tool, available };
   });
 
-  return NextResponse.json({ tools });
+  return NextResponse.json({ tools, grantedScopes });
 }

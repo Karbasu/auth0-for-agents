@@ -2,25 +2,30 @@ import { hasScopes } from "../auth/scope-resolver.js";
 import type { ToolDef } from "../types.js";
 
 // Import all tools
-import { searchEmails, readEmail, listLabels, createDraft } from "./gmail/index.js";
-import { listRepos, listIssues, readIssue, createComment } from "./github/index.js";
+import { searchEmails, readEmail, listLabels, createDraft, sendEmail } from "./gmail/index.js";
+import { listRepos, listIssues, readIssue, createComment, createIssue } from "./github/index.js";
 import { listEvents, getEvent, createEvent } from "./calendar/index.js";
 
 /** Complete catalog of every tool VaultMCP knows about */
 export const ALL_TOOLS: ToolDef[] = [
-  // Gmail
+  // Gmail (read)
   searchEmails,
   readEmail,
   listLabels,
+  // Gmail (write)
   createDraft,
-  // GitHub
+  sendEmail,
+  // GitHub (read)
   listRepos,
   listIssues,
   readIssue,
+  // GitHub (write)
   createComment,
-  // Calendar
+  createIssue,
+  // Calendar (read)
   listEvents,
   getEvent,
+  // Calendar (write)
   createEvent,
 ];
 

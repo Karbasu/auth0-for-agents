@@ -6,6 +6,7 @@ export const readIssue: ToolDef = {
   description:
     "Read a specific GitHub issue including its body and comments.",
   service: "github",
+  type: "read",
   requiredScopes: ["repo"],
   inputSchema: z.object({
     owner: z.string().describe("Repository owner"),

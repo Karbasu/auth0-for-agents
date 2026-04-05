@@ -6,6 +6,7 @@ export const getEvent: ToolDef = {
   description:
     "Get details of a specific Google Calendar event by its ID.",
   service: "calendar",
+  type: "read",
   requiredScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
   inputSchema: z.object({
     eventId: z.string().describe("The calendar event ID"),

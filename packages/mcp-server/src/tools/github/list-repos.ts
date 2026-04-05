@@ -6,6 +6,7 @@ export const listRepos: ToolDef = {
   description:
     "List GitHub repositories for the authenticated user.",
   service: "github",
+  type: "read",
   requiredScopes: ["repo", "read:user"],
   inputSchema: z.object({
     sort: z

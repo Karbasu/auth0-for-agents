@@ -6,6 +6,7 @@ export const createEvent: ToolDef = {
   description:
     "Create a new event on the user's primary Google Calendar.",
   service: "calendar",
+  type: "write",
   requiredScopes: ["https://www.googleapis.com/auth/calendar.events"],
   inputSchema: z.object({
     summary: z.string().describe("Event title"),

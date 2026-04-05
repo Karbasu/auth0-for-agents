@@ -5,6 +5,7 @@ export const readEmail: ToolDef = {
   name: "read_email",
   description: "Read the full content of a Gmail message by its ID.",
   service: "gmail",
+  type: "read",
   requiredScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   inputSchema: z.object({
     messageId: z.string().describe("The Gmail message ID"),

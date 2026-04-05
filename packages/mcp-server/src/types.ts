@@ -3,11 +3,19 @@ import { z } from "zod";
 /** Supported third-party services */
 export type ServiceId = "gmail" | "github" | "calendar";
 
+/** Auth0 connection name for each service */
+export const SERVICE_CONNECTIONS: Record<ServiceId, string> = {
+  gmail: "google-oauth2",
+  github: "github",
+  calendar: "google-oauth2",
+};
+
 /** A single MCP tool definition */
 export interface ToolDef {
   name: string;
   description: string;
   service: ServiceId;
+  type: "read" | "write";
   requiredScopes: string[];
   inputSchema: z.ZodType<any>;
   execute: (args: any, accessToken: string) => Promise<any>;

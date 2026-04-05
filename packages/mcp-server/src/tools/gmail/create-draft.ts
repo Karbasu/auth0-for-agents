@@ -6,6 +6,7 @@ export const createDraft: ToolDef = {
   description:
     "Create a draft email in Gmail. The draft can be reviewed and sent by the user.",
   service: "gmail",
+  type: "write",
   requiredScopes: ["https://www.googleapis.com/auth/gmail.compose"],
   inputSchema: z.object({
     to: z.string().describe("Recipient email address"),
