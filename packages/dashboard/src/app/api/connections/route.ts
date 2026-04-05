@@ -25,6 +25,7 @@ export async function GET() {
     id: svc.id,
     name: svc.name,
     icon: svc.icon,
+    connection: svc.connection,
     connected: auth0Connected && scopeVars[svc.id].length > 0,
   }));
 

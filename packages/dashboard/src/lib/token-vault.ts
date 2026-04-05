@@ -40,7 +40,7 @@ export async function getAccessToken(): Promise<string> {
 
 /** Service metadata for the dashboard UI */
 export const SERVICES = [
-  { id: "gmail" as const, name: "Gmail", icon: "Mail" },
-  { id: "github" as const, name: "GitHub", icon: "Github" },
-  { id: "calendar" as const, name: "Google Calendar", icon: "Calendar" },
+  { id: "gmail" as const, name: "Gmail", icon: "Mail", connection: "google-oauth2" },
+  { id: "github" as const, name: "GitHub", icon: "Github", connection: "github" },
+  { id: "calendar" as const, name: "Google Calendar", icon: "Calendar", connection: "google-oauth2" },
 ] as const;

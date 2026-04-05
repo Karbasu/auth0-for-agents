@@ -31,7 +31,7 @@ export default function LandingPage() {
             desc: "Auth0 handles OAuth token exchange. No tokens stored in your app — ever.",
           },
           {
-            title: "11 Tools, 3 Services",
+            title: "13 Tools, 3 Services",
             desc: "Gmail, GitHub, and Google Calendar — all gated by fine-grained OAuth scopes.",
           },
         ].map((item) => (

@@ -24,7 +24,7 @@ const connection = arg === "github" ? "github" : "google-oauth2";
 
 // Request downstream scopes so Auth0 stores the tokens
 const connectionScopes = connection === "google-oauth2"
-  ? "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events"
+  ? "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events"
   : "repo read:user";
 
 /**
