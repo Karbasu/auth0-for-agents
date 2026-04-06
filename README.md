@@ -18,7 +18,7 @@ Every AI agent framework reinvents OAuth. They store tokens in plaintext, implem
 
 Traditional agent auth:
 ```
-AI calls send_email → gets "403 Forbidden" → tries to work around it
+AI calls send_email → gets "403 Forbidden" → retries, hallucinates, asks user to bypass
 ```
 
 **VaultMCP's approach:**
@@ -27,9 +27,9 @@ User grants: gmail.readonly
   AI sees:      search_emails, read_email, list_labels     (3 tools)
   AI doesn't see: create_draft, send_email                  (hidden entirely)
 
-User adds: gmail.compose, gmail.send
+User toggles ON: gmail.compose, gmail.send  (from dashboard, in real-time)
   AI now sees:  search_emails, read_email, list_labels,
-                create_draft, send_email                     (5 tools)
+                create_draft, send_email                     (5 tools — instantly)
 ```
 
 The AI can't hack, social-engineer, or hallucinate its way into using tools it can't see. This is **defense at the discovery layer** — before execution even happens.
@@ -39,76 +39,78 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 ## Architecture
 
 ```
-┌─────────────────┐     stdio      ┌──────────────────────────────────┐
-│  Claude Desktop  │ ◄────────────► │         VaultMCP Server          │
-│  Claude Code     │                │                                  │
-│  (any MCP client)│                │  ┌──────────────────────────┐   │
-└─────────────────┘                │  │   Scope Resolver          │   │
-                                    │  │   Read user's granted     │   │
-                                    │  │   scopes from env config  │   │
-                                    │  └─────────┬────────────────┘   │
-                                    │            ▼                     │
-                                    │  ┌──────────────────────────┐   │
-                                    │  │   Tool Registry           │   │
-                                    │  │   Filter 13-tool catalog  │   │
-                                    │  │   by granted scopes       │   │
-                                    │  │   (Authorization by       │   │
-                                    │  │    Omission engine)       │   │
-                                    │  └─────────┬────────────────┘   │
-                                    │            ▼                     │
-                                    │  ┌──────────────────────────┐   │
-                                    │  │   Token Vault Client      │   │
-                                    │  │   1. Get mgmt API token   │   │
-                                    │  │   2. Fetch user identity  │   │
-                                    │  │   3. Refresh downstream   │   │
-                                    │  │      access token         │   │
-                                    │  └─────────┬────────────────┘   │
-                                    │            ▼                     │
-                                    │  ┌──────────────────────────┐   │
-                                    │  │   Audit Logger            │   │
-                                    │  │   Log every invocation    │   │
-                                    │  │   with timing + status    │   │
-                                    │  └──────────────────────────┘   │
-                                    └──────────────┬───────────────────┘
+┌─────────────────┐     stdio      ┌──────────────────────────────────────┐
+│  Claude Desktop  │ ◄────────────► │           VaultMCP Server            │
+│  Claude Code     │                │                                      │
+│  (any MCP client)│  tools/list    │  ┌────────────────────────────────┐  │
+└─────────────────┘  ◄──────────   │  │   Dynamic Scope Resolver       │  │
+        ▲                           │  │   Reads scopes.json on EVERY   │  │
+        │  tools/list_changed       │  │   tools/list + tools/call      │  │
+        │  notification             │  └──────────┬─────────────────────┘  │
+        └───────────────────────    │             ▼                        │
+                                    │  ┌────────────────────────────────┐  │
+                                    │  │   Tool Registry (13 tools)     │  │
+                                    │  │   Filter catalog by scopes     │  │
+                                    │  │   (Authorization by Omission)  │  │
+                                    │  └──────────┬─────────────────────┘  │
+                                    │             ▼                        │
+                                    │  ┌────────────────────────────────┐  │
+                                    │  │   Token Vault Client            │  │
+                                    │  │   1. Get mgmt API token         │  │
+                                    │  │   2. Fetch user identity        │  │
+                                    │  │   3. Refresh downstream token   │  │
+                                    │  └──────────┬─────────────────────┘  │
+                                    │             ▼                        │
+                                    │  ┌────────────────────────────────┐  │
+                                    │  │   Audit Logger                  │  │
+                                    │  │   Log every call with timing    │  │
+                                    │  └────────────────────────────────┘  │
+                                    └──────────────┬───────────────────────┘
                                                    │
-                                    ┌──────────────▼───────────────┐
-                                    │       Auth0 Tenant            │
-                                    │  ┌────────────────────────┐   │
-                                    │  │  Token Vault            │   │
-                                    │  │  • google-oauth2        │   │
-                                    │  │  • github               │   │
-                                    │  │  (refresh tokens stored  │   │
-                                    │  │   securely by Auth0)     │   │
-                                    │  └────────────────────────┘   │
-                                    │                               │
-                                    │  Management API               │
-                                    │  • User identities            │
-                                    │  • Account linking            │
-                                    └──────────────┬────────────────┘
-                                                   │
-                            ┌──────────┬───────────┴──────┬──────────┐
-                            ▼          ▼                  ▼          │
-                        Gmail API  GitHub API       Calendar API     │
+                              ┌─────────────┐      │      ┌──────────────┐
+                              │ scopes.json │◄─────┤      │  Auth0       │
+                              │ (shared)    │      └─────►│  Tenant      │
+                              └──────┬──────┘             │              │
+                                     │                    │  Token Vault │
+                                     │  fs.watchFile      │  • Google    │
+                                     │                    │  • GitHub    │
+                                     ▼                    │              │
+┌──────────────────────────────────────────────────┐      │  Mgmt API   │
+│               Next.js Dashboard                   │      └──────┬──────┘
+│                                                   │             │
+│  POST /api/scopes ──► writes scopes.json          │    ┌────────┴────────┐
+│  (MCP server detects change, sends notification)  │    ▼        ▼        ▼
+│                                                   │  Gmail   GitHub  Calendar
+│  ┌─────────────┐ ┌──────────────┐ ┌───────────┐  │   API     API      API
+│  │ Connection  │ │ Scope        │ │ AI's      │  │
+│  │ Panel       │ │ Toggles      │ │ Perspective│  │
+│  │             │ │ (real-time)  │ │ (live)    │  │
+│  │ Gmail   ✓  │ │ ○ readonly   │ │ ┌───┐┌──┐ │  │
+│  │ GitHub  ✓  │ │ ○ compose    │ │ │vis││hid│ │  │
+│  │ Cal.    ✓  │ │ ○ send       │ │ └───┘└──┘ │  │
+│  └─────────────┘ └──────────────┘ └───────────┘  │
+│  ┌─────────────────────────────────────────────┐  │
+│  │ Tool Catalog │ Audit Trail (timing + status) │  │
+│  └─────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────┘
+```
 
+### Real-Time Scope Flow
 
-┌──────────────────────────────────────────────────────────────────────┐
-│                      Next.js Dashboard                               │
-│                                                                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐ │
-│  │  Connection   │  │   Scope      │  │      AI's Perspective      │ │
-│  │  Panel        │  │   Toggles    │  │                            │ │
-│  │               │  │              │  │  ┌─────────┐ ┌──────────┐ │ │
-│  │  Gmail    ✓   │  │  ○ readonly  │  │  │ AI sees │ │ Hidden   │ │ │
-│  │  GitHub   ✓   │  │  ○ compose   │  │  │ 8 tools │ │ 5 tools  │ │ │
-│  │  Calendar ✓   │  │  ○ send      │  │  │ (green) │ │ (gray)   │ │ │
-│  └──────────────┘  └──────────────┘  │  └─────────┘ └──────────┘ │ │
-│                                       └────────────────────────────┘ │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │  Tool Catalog (grouped by service, click to expand scopes)    │  │
-│  ├────────────────────────────────────────────────────────────────┤  │
-│  │  Audit Trail — every invocation with timing + status          │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────┘
+```
+1. User toggles OFF gmail.send on dashboard
+        │
+2. Dashboard POSTs to /api/scopes → writes scopes.json
+        │
+3. MCP server detects file change (fs.watchFile)
+        │
+4. MCP server sends tools/list_changed notification to Claude
+        │
+5. Claude re-fetches tools/list → send_email is gone
+        │
+6. User asks Claude "send an email" → Claude says "I can't do that"
+        │
+   No restart. No 403. The tool never existed in Claude's world.
 ```
 
 ### Token Flow (Step by Step)
@@ -116,8 +118,8 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 ```
 1. AI calls search_emails("hackathon")
         │
-2. VaultMCP checks: does user have gmail.readonly scope?
-   YES → proceed (NO → tool was never registered, call impossible)
+2. VaultMCP checks scopes.json: does user have gmail.readonly?
+   YES → proceed (NO → tool wasn't in tools/list, call impossible)
         │
 3. Get Auth0 Management API token (client_credentials grant, cached)
         │
@@ -139,6 +141,7 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 - Your app **never stores OAuth refresh tokens** — Auth0 Token Vault holds them
 - The MCP server only gets **short-lived access tokens** (1 hour for Google, cached)
 - **3-level caching**: management token, downstream tokens, identity data
+- **Double-check at call time**: even if a tool was in the list, scopes are re-verified before execution
 
 ---
 
@@ -160,7 +163,7 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 | `get_event` | Calendar | calendar.readonly | Read | Get event details |
 | `create_event` | Calendar | calendar.events | Write | Create a calendar event |
 
-**Write tools only appear when you grant the corresponding scope.** Remove a scope, and the tool vanishes from the AI's perspective — it can't even attempt the action.
+**Write tools only appear when you grant the corresponding scope.** Toggle a scope off on the dashboard, and the tool vanishes from the AI's world in real-time — no restart needed.
 
 ---
 
@@ -170,7 +173,9 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 
 | Layer | Mechanism | What It Prevents |
 |-------|-----------|-----------------|
-| **Discovery** | Authorization by Omission — tools only registered if scopes match | AI can't attempt unauthorized actions |
+| **Discovery** | Authorization by Omission — tools only listed if scopes match | AI can't attempt unauthorized actions |
+| **Call-time** | Scopes re-checked on every `tools/call` before execution | Race condition between scope change and tool call |
+| **Real-time revocation** | Dashboard toggles → scopes.json → `tools/list_changed` notification | Delayed revocation; tools persist after scope removed |
 | **Token Storage** | Auth0 Token Vault holds refresh tokens — app never sees them | Token theft from app compromise |
 | **Token Lifetime** | Only short-lived access tokens (1hr) are used at runtime | Reduces blast radius of leaked tokens |
 | **Audit Trail** | Every tool call logged with timestamp, duration, success/failure | Full forensic visibility |
@@ -184,17 +189,17 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 | Unauthorized tool call | Runtime error (403) | Impossible — tool doesn't exist |
 | Token refresh | DIY per-provider logic | Auth0 handles it + MCP server auto-refreshes |
 | Multi-provider | Each integration is a separate auth system | Single Auth0 user, multiple linked identities |
+| Revoking access | Delete tokens, restart server | Toggle scope on dashboard → instant |
 | Audit | DIY logging (if any) | Built-in, every call logged with timing |
-| Revoking access | Delete tokens from your database | Remove scope from env config → tool vanishes |
 
 ---
 
 ## Dashboard
 
-The Next.js web dashboard provides real-time visibility and control over the authorization state:
+The Next.js web dashboard provides **real-time control** over the authorization state — scope changes propagate to the MCP server instantly:
 
 - **Connection Panel** — Shows which services (Gmail, GitHub, Calendar) are connected via Auth0 Token Vault, with live status
-- **Scope Control** — Interactive toggle switches for every OAuth scope, grouped by service. Flip a switch and watch tool availability update instantly — Authorization by Omission visualized in real-time
+- **Scope Control** — Interactive toggle switches for every OAuth scope, grouped by service. Flip a switch and the change is written to a shared `scopes.json` file that the MCP server watches — tools appear or vanish from the AI's world in real-time, no restart needed
 - **AI's Perspective** — Split-panel view showing what the AI can see (left, green) vs. what's hidden (right, gray with strikethrough). Tools move between panels live as you toggle scopes
 - **Tool Catalog** — All 13 tools grouped by service with read/write badges. Click any tool to see its required scopes vs. your granted scopes (green = granted, red = missing)
 - **Audit Trail** — Live feed of every tool invocation with timing and success/failure status
@@ -289,6 +294,8 @@ npm run dev:dashboard
 # Open http://localhost:3000
 ```
 
+Toggle scopes on the dashboard — the MCP server picks up changes in real-time.
+
 ---
 
 ## Project Structure
@@ -299,7 +306,8 @@ auth0-for-agents/
 │   ├── mcp-server/                  # Core MCP server
 │   │   └── src/
 │   │       ├── index.ts             # Entry point — stdio transport
-│   │       ├── server.ts            # McpServer creation + tool registration
+│   │       ├── server.ts            # Low-level Server with dynamic tools/list
+│   │       ├── scopes-store.ts      # Read/write/watch shared scopes.json
 │   │       ├── config.ts            # Environment config with dotenv
 │   │       ├── types.ts             # ToolDef, ServiceId, AuditEntry
 │   │       ├── auth/
@@ -317,7 +325,11 @@ auth0-for-agents/
 │           ├── app/
 │           │   ├── page.tsx         # Landing page
 │           │   ├── dashboard/       # Main dashboard view
-│           │   └── api/             # REST endpoints (connections, tools, audit)
+│           │   └── api/
+│           │       ├── connections/  # GET — service connection status
+│           │       ├── tools/       # GET — tool catalog with availability
+│           │       ├── scopes/      # GET/POST — read/write shared scopes
+│           │       └── audit/       # GET/POST — audit log entries
 │           ├── components/
 │           │   ├── connection-panel.tsx  # Service connection status cards
 │           │   ├── scope-toggles.tsx     # Interactive scope toggle switches
@@ -327,6 +339,7 @@ auth0-for-agents/
 │           └── lib/
 │               ├── token-vault.ts   # Auth0 client for dashboard
 │               └── audit-store.ts   # Audit entry storage
+├── scopes.json                      # Shared scope config (MCP server watches this)
 ├── get-token.js                     # CLI helper: Auth0 login + account linking
 ├── .env.example                     # Template for all environment variables
 ├── tsconfig.base.json               # Shared TypeScript config
@@ -338,11 +351,11 @@ auth0-for-agents/
 
 | Component | Technology |
 |-----------|-----------|
-| **MCP Server** | TypeScript, `@modelcontextprotocol/sdk`, Zod schemas, stdio transport |
+| **MCP Server** | TypeScript, `@modelcontextprotocol/sdk` (low-level `Server` class), Zod schemas, stdio transport |
 | **Dashboard** | Next.js 15, React 19, Tailwind CSS, Lucide icons |
 | **Auth** | Auth0 Token Vault, Management API, Google OAuth2, GitHub OAuth |
+| **Real-time sync** | Shared `scopes.json` + `fs.watchFile` + MCP `tools/list_changed` notification |
 | **Monorepo** | npm workspaces |
-| **Transport** | stdio (compatible with Claude Desktop, Claude Code, any MCP client) |
 
 ## Auth0 Features Used
 
@@ -359,12 +372,12 @@ AI agents are getting more capable every month. The question isn't *whether* the
 
 VaultMCP demonstrates that **authorization doesn't have to be an afterthought**. By combining Auth0's Token Vault with the MCP protocol's tool discovery mechanism, we get a security model where:
 
-1. **Users control the surface area** — adjust scopes, and the AI's capabilities change instantly
+1. **Users control the surface area in real-time** — toggle a scope on the dashboard, and the AI's capabilities change instantly
 2. **Tokens are never at risk** — Auth0 holds them, not your app
 3. **Every action is auditable** — full trail of what the AI did, when, and whether it succeeded
 4. **Adding a new service is just adding a new tool file** — the authorization framework handles the rest
 
-This isn't just a hackathon project. It's a pattern for how AI agent authorization should work.
+Traditional auth says no. Authorization by Omission removes the question entirely. **The agent can't want what it doesn't know exists.**
 
 ## License
 
