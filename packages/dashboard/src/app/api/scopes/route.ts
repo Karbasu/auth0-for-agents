@@ -5,30 +5,61 @@ import path from "path";
 /** Shared scopes file at monorepo root — same file the MCP server watches */
 const SCOPES_FILE = path.resolve(process.cwd(), "../../scopes.json");
 
+interface ScopeEntry {
+  scope: string;
+  expiresAt?: number;
+}
+
+interface ScopesData {
+  gmail: ScopeEntry[];
+  github: ScopeEntry[];
+  calendar: ScopeEntry[];
+}
+
+function readScopesFile(): ScopesData {
+  try {
+    const raw = JSON.parse(fs.readFileSync(SCOPES_FILE, "utf-8"));
+    // Normalize: handle both string[] and ScopeEntry[] formats
+    const normalize = (arr: (string | ScopeEntry)[]): ScopeEntry[] =>
+      (arr ?? []).map((e) => (typeof e === "string" ? { scope: e } : e));
+    return {
+      gmail: normalize(raw.gmail),
+      github: normalize(raw.github),
+      calendar: normalize(raw.calendar),
+    };
+  } catch {
+    return { gmail: [], github: [], calendar: [] };
+  }
+}
+
 /**
  * GET /api/scopes
  * Read current scopes from the shared file.
+ * Filters out expired scopes before returning.
  */
 export async function GET() {
-  try {
-    const data = fs.readFileSync(SCOPES_FILE, "utf-8");
-    return NextResponse.json(JSON.parse(data));
-  } catch {
-    // File doesn't exist yet — return empty
-    return NextResponse.json({ gmail: [], github: [], calendar: [] });
-  }
+  const data = readScopesFile();
+  const now = Date.now();
+
+  // Filter out expired scopes for the response
+  const active: ScopesData = {
+    gmail: data.gmail.filter((e) => !e.expiresAt || e.expiresAt > now),
+    github: data.github.filter((e) => !e.expiresAt || e.expiresAt > now),
+    calendar: data.calendar.filter((e) => !e.expiresAt || e.expiresAt > now),
+  };
+
+  return NextResponse.json(active);
 }
 
 /**
  * POST /api/scopes
  * Write new scopes to the shared file.
- * The MCP server watches this file and sends tools/list_changed
- * notification to the AI client automatically.
+ * Accepts ScopeEntry[] format with optional expiresAt per scope.
+ * The MCP server watches this file and sends tools/list_changed automatically.
  */
 export async function POST(req: Request) {
-  const scopes = await req.json();
+  const scopes: ScopesData = await req.json();
 
-  // Validate structure
   const valid =
     scopes &&
     Array.isArray(scopes.gmail) &&

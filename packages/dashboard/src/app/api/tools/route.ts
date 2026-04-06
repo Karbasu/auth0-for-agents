@@ -28,10 +28,26 @@ const TOOL_CATALOG = [
 /** Shared scopes file at monorepo root */
 const SCOPES_FILE = path.resolve(process.cwd(), "../../scopes.json");
 
+interface ScopeEntry {
+  scope: string;
+  expiresAt?: number;
+}
+
+/** Read scopes from shared file, normalize ScopeEntry format, filter expired */
 function readScopes(): Record<string, string[]> {
   try {
-    const data = fs.readFileSync(SCOPES_FILE, "utf-8");
-    return JSON.parse(data);
+    const data = JSON.parse(fs.readFileSync(SCOPES_FILE, "utf-8"));
+    const now = Date.now();
+    const normalize = (arr: (string | ScopeEntry)[]): string[] =>
+      (arr ?? [])
+        .map((e) => (typeof e === "string" ? { scope: e } : e))
+        .filter((e) => !e.expiresAt || e.expiresAt > now)
+        .map((e) => e.scope);
+    return {
+      gmail: normalize(data.gmail),
+      github: normalize(data.github),
+      calendar: normalize(data.calendar),
+    };
   } catch {
     // Fall back to env vars if file doesn't exist
     return {

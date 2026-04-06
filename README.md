@@ -65,6 +65,11 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
                                     │  │   Audit Logger                  │  │
                                     │  │   Log every call with timing    │  │
                                     │  └────────────────────────────────┘  │
+                                    │  ┌────────────────────────────────┐  │
+                                    │  │   Expiry Checker (30s interval) │  │
+                                    │  │   Remove expired scopes from    │  │
+                                    │  │   scopes.json → tools/list_changed│ │
+                                    │  └────────────────────────────────┘  │
                                     └──────────────┬───────────────────────┘
                                                    │
                               ┌─────────────┐      │      ┌──────────────┐
@@ -112,6 +117,27 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
         │
    No restart. No 403. The tool never existed in Claude's world.
 ```
+
+### Time-Based Scope Access
+
+Scopes can be granted with a time limit. Instead of toggling a scope off manually, set a timer and the scope auto-revokes when time is up.
+
+```
+1. User enables gmail.send and clicks the "30m" timer preset on the dashboard
+        │
+2. Dashboard writes { scope: "gmail.send", expiresAt: <now + 30 min> } to scopes.json
+        │
+3. AI can now use send_email — dashboard shows a live countdown badge
+        │
+4. 30 minutes pass → MCP server's expiry checker (30-second interval) detects
+   that gmail.send has expired → removes it from scopes.json
+        │
+5. MCP server sends tools/list_changed notification to Claude
+        │
+6. send_email vanishes from the AI's world — automatically, no human in the loop
+```
+
+Each active scope toggle on the dashboard shows timer preset buttons (**30m**, **1h**, **4h**). A live countdown badge displays the remaining time. Click the **infinity** button to remove the timer and make the scope permanent again.
 
 ### Token Flow (Step by Step)
 
@@ -180,6 +206,7 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 | **Token Lifetime** | Only short-lived access tokens (1hr) are used at runtime | Reduces blast radius of leaked tokens |
 | **Audit Trail** | Every tool call logged with timestamp, duration, success/failure | Full forensic visibility |
 | **Scope Granularity** | Read/write separation per service (e.g., gmail.readonly vs gmail.send) | Principle of least privilege |
+| **Time-based access** | Scopes auto-revoke after a user-defined duration (30m, 1h, 4h); expiry checker runs every 30s | Permanent over-provisioning; forgotten permissions |
 
 ### Compared to Traditional Approaches
 
@@ -190,6 +217,7 @@ The AI can't hack, social-engineer, or hallucinate its way into using tools it c
 | Token refresh | DIY per-provider logic | Auth0 handles it + MCP server auto-refreshes |
 | Multi-provider | Each integration is a separate auth system | Single Auth0 user, multiple linked identities |
 | Revoking access | Delete tokens, restart server | Toggle scope on dashboard → instant |
+| Temporary access | No standard mechanism | Timer presets (30m/1h/4h) with auto-revocation |
 | Audit | DIY logging (if any) | Built-in, every call logged with timing |
 
 ---
@@ -200,6 +228,7 @@ The Next.js web dashboard provides **real-time control** over the authorization 
 
 - **Connection Panel** — Shows which services (Gmail, GitHub, Calendar) are connected via Auth0 Token Vault, with live status
 - **Scope Control** — Interactive toggle switches for every OAuth scope, grouped by service. Flip a switch and the change is written to a shared `scopes.json` file that the MCP server watches — tools appear or vanish from the AI's world in real-time, no restart needed
+- **Time-Based Access** — Each active scope shows timer preset buttons (30m, 1h, 4h) with a live countdown badge. Set a timer and the scope auto-revokes when it expires — the MCP server's 30-second expiry checker removes it from `scopes.json` and triggers `tools/list_changed`. Click the infinity button to make a scope permanent again
 - **AI's Perspective** — Split-panel view showing what the AI can see (left, green) vs. what's hidden (right, gray with strikethrough). Tools move between panels live as you toggle scopes
 - **Tool Catalog** — All 13 tools grouped by service with read/write badges. Click any tool to see its required scopes vs. your granted scopes (green = granted, red = missing)
 - **Audit Trail** — Live feed of every tool invocation with timing and success/failure status
@@ -354,7 +383,7 @@ auth0-for-agents/
 | **MCP Server** | TypeScript, `@modelcontextprotocol/sdk` (low-level `Server` class), Zod schemas, stdio transport |
 | **Dashboard** | Next.js 15, React 19, Tailwind CSS, Lucide icons |
 | **Auth** | Auth0 Token Vault, Management API, Google OAuth2, GitHub OAuth |
-| **Real-time sync** | Shared `scopes.json` + `fs.watchFile` + MCP `tools/list_changed` notification |
+| **Real-time sync** | Shared `scopes.json` + `fs.watchFile` + MCP `tools/list_changed` notification + 30s expiry checker |
 | **Monorepo** | npm workspaces |
 
 ## Auth0 Features Used
@@ -373,9 +402,10 @@ AI agents are getting more capable every month. The question isn't *whether* the
 VaultMCP demonstrates that **authorization doesn't have to be an afterthought**. By combining Auth0's Token Vault with the MCP protocol's tool discovery mechanism, we get a security model where:
 
 1. **Users control the surface area in real-time** — toggle a scope on the dashboard, and the AI's capabilities change instantly
-2. **Tokens are never at risk** — Auth0 holds them, not your app
-3. **Every action is auditable** — full trail of what the AI did, when, and whether it succeeded
-4. **Adding a new service is just adding a new tool file** — the authorization framework handles the rest
+2. **Scopes can be time-limited** — grant `gmail.send` for 30 minutes and it auto-revokes, no human in the loop
+3. **Tokens are never at risk** — Auth0 holds them, not your app
+4. **Every action is auditable** — full trail of what the AI did, when, and whether it succeeded
+5. **Adding a new service is just adding a new tool file** — the authorization framework handles the rest
 
 Traditional auth says no. Authorization by Omission removes the question entirely. **The agent can't want what it doesn't know exists.**
 

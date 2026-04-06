@@ -8,10 +8,10 @@ import { ALL_TOOLS } from "./tools/registry.js";
 import { exchangeToken } from "./auth/token-vault.js";
 import { audit } from "./audit/logger.js";
 import {
-  getScopes,
   initScopesFile,
   watchScopes,
   hasScopesDynamic,
+  startExpiryChecker,
 } from "./scopes-store.js";
 import type { ToolDef } from "./types.js";
 
@@ -114,6 +114,9 @@ export function createVaultMcpServer(): Server {
       };
     }
   });
+
+  // ── Expiry checker — auto-revoke timed scopes every 30s ──────────
+  startExpiryChecker();
 
   // ── Watch scopes file → notify client of tool list changes ───────
   watchScopes(() => {

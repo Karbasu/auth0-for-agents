@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { ConnectionPanel } from "@/components/connection-panel";
 import { ScopeToggles } from "@/components/scope-toggles";
+import type { ScopeEntry } from "@/components/scope-toggles";
 import { AIView } from "@/components/ai-view";
 import { ToolGrid } from "@/components/tool-grid";
 import { AuditLog } from "@/components/audit-log";
@@ -17,7 +18,7 @@ interface Tool {
 }
 
 export default function DashboardPage() {
-  const [localScopes, setLocalScopes] = useState<Record<string, string[]>>({});
+  const [localScopes, setLocalScopes] = useState<Record<string, ScopeEntry[]>>({});
   const [allTools, setAllTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -25,41 +26,46 @@ export default function DashboardPage() {
   const syncTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    fetch("/api/tools")
-      .then((r) => r.json())
-      .then((data) => {
-        setAllTools(data.tools ?? []);
-        setLocalScopes(data.grantedScopes ?? {});
+    Promise.all([
+      fetch("/api/tools").then((r) => r.json()),
+      fetch("/api/scopes").then((r) => r.json()),
+    ])
+      .then(([toolsData, scopesData]) => {
+        setAllTools(toolsData.tools ?? []);
+        setLocalScopes(scopesData ?? {});
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
 
   /** Persist scope changes to scopes.json (MCP server watches this file) */
-  const persistScopes = useCallback((newScopes: Record<string, string[]>) => {
-    setSyncing(true);
-    fetch("/api/scopes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newScopes),
-    })
-      .then(() => {
-        setLastSynced(new Date().toLocaleTimeString());
-        setSyncing(false);
+  const persistScopes = useCallback(
+    (newScopes: Record<string, ScopeEntry[]>) => {
+      setSyncing(true);
+      fetch("/api/scopes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newScopes),
       })
-      .catch(() => setSyncing(false));
-  }, []);
+        .then(() => {
+          setLastSynced(new Date().toLocaleTimeString());
+          setSyncing(false);
+        })
+        .catch(() => setSyncing(false));
+    },
+    []
+  );
 
   const handleToggle = useCallback(
     (service: string, scope: string) => {
       setLocalScopes((prev) => {
-        const current = prev[service] ?? [];
-        const has = current.includes(scope);
+        const entries = prev[service] ?? [];
+        const has = entries.some((e) => e.scope === scope);
         const updated = {
           ...prev,
           [service]: has
-            ? current.filter((s) => s !== scope)
-            : [...current, scope],
+            ? entries.filter((e) => e.scope !== scope)
+            : [...entries, { scope }],
         };
 
         // Debounce: persist after 300ms of no toggles
@@ -72,9 +78,43 @@ export default function DashboardPage() {
     [persistScopes]
   );
 
-  // Recompute tool availability based on local (toggled) scopes
+  const handleSetTimer = useCallback(
+    (service: string, scope: string, minutes: number | null) => {
+      setLocalScopes((prev) => {
+        const entries = prev[service] ?? [];
+        const updated = {
+          ...prev,
+          [service]: entries.map((e) => {
+            if (e.scope !== scope) return e;
+            return minutes
+              ? { scope: e.scope, expiresAt: Date.now() + minutes * 60 * 1000 }
+              : { scope: e.scope }; // remove timer → permanent
+          }),
+        };
+
+        if (syncTimeout.current) clearTimeout(syncTimeout.current);
+        syncTimeout.current = setTimeout(() => persistScopes(updated), 300);
+
+        return updated;
+      });
+    },
+    [persistScopes]
+  );
+
+  // Convert ScopeEntry[] to plain string[] (active scopes only) for child components
+  const now = Date.now();
+  const activeScopesPlain: Record<string, string[]> = Object.fromEntries(
+    Object.entries(localScopes).map(([service, entries]) => [
+      service,
+      (entries ?? [])
+        .filter((e) => !e.expiresAt || e.expiresAt > now)
+        .map((e) => e.scope),
+    ])
+  );
+
+  // Recompute tool availability based on active (non-expired) scopes
   const computedTools = allTools.map((tool) => {
-    const granted = localScopes[tool.service] ?? [];
+    const granted = activeScopesPlain[tool.service] ?? [];
     const available = tool.requiredScopes.every((s) => granted.includes(s));
     return { ...tool, available };
   });
@@ -146,9 +186,13 @@ export default function DashboardPage() {
           <SectionHeader
             icon={<Shield className="h-4 w-4" />}
             title="Scope Control"
-            subtitle="Toggle scopes to control what the AI can see — changes apply to the MCP server in real-time"
+            subtitle="Toggle scopes to control what the AI can see — set timers for auto-revocation"
           />
-          <ScopeToggles grantedScopes={localScopes} onToggle={handleToggle} />
+          <ScopeToggles
+            grantedScopes={localScopes}
+            onToggle={handleToggle}
+            onSetTimer={handleSetTimer}
+          />
         </section>
 
         {/* Section 3: AI's Perspective */}
@@ -168,7 +212,7 @@ export default function DashboardPage() {
             title="Full Tool Catalog"
             subtitle="All 13 tools with scope requirements — click any tool for details"
           />
-          <ToolGrid tools={computedTools} grantedScopes={localScopes} />
+          <ToolGrid tools={computedTools} grantedScopes={activeScopesPlain} />
         </section>
 
         {/* Section 5: Audit Log */}
