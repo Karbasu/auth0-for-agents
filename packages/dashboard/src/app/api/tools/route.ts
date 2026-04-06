@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 
 /** Complete tool catalog with scope requirements */
 const TOOL_CATALOG = [
@@ -23,16 +25,29 @@ const TOOL_CATALOG = [
   { name: "create_event", service: "calendar", requiredScopes: ["https://www.googleapis.com/auth/calendar.events"], type: "write" },
 ];
 
+/** Shared scopes file at monorepo root */
+const SCOPES_FILE = path.resolve(process.cwd(), "../../scopes.json");
+
+function readScopes(): Record<string, string[]> {
+  try {
+    const data = fs.readFileSync(SCOPES_FILE, "utf-8");
+    return JSON.parse(data);
+  } catch {
+    // Fall back to env vars if file doesn't exist
+    return {
+      gmail: (process.env.GMAIL_SCOPES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+      github: (process.env.GITHUB_SCOPES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+      calendar: (process.env.CALENDAR_SCOPES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    };
+  }
+}
+
 /**
  * GET /api/tools
- * Return all tools and their availability based on configured scopes.
+ * Return all tools and their availability based on current scopes.
  */
 export async function GET() {
-  const grantedScopes: Record<string, string[]> = {
-    gmail: (process.env.GMAIL_SCOPES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    github: (process.env.GITHUB_SCOPES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    calendar: (process.env.CALENDAR_SCOPES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-  };
+  const grantedScopes = readScopes();
 
   const tools = TOOL_CATALOG.map((tool) => {
     const granted = grantedScopes[tool.service] ?? [];

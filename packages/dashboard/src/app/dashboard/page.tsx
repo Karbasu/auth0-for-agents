@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { ConnectionPanel } from "@/components/connection-panel";
 import { ScopeToggles } from "@/components/scope-toggles";
 import { AIView } from "@/components/ai-view";
 import { ToolGrid } from "@/components/tool-grid";
 import { AuditLog } from "@/components/audit-log";
-import { Shield, Fingerprint, Activity } from "lucide-react";
+import { Shield, Fingerprint, Activity, Zap } from "lucide-react";
 
 interface Tool {
   name: string;
@@ -17,35 +17,60 @@ interface Tool {
 }
 
 export default function DashboardPage() {
-  const [serverScopes, setServerScopes] = useState<Record<string, string[]>>({});
   const [localScopes, setLocalScopes] = useState<Record<string, string[]>>({});
   const [allTools, setAllTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const syncTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetch("/api/tools")
       .then((r) => r.json())
       .then((data) => {
         setAllTools(data.tools ?? []);
-        setServerScopes(data.grantedScopes ?? {});
         setLocalScopes(data.grantedScopes ?? {});
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
 
-  const handleToggle = useCallback((service: string, scope: string) => {
-    setLocalScopes((prev) => {
-      const current = prev[service] ?? [];
-      const has = current.includes(scope);
-      return {
-        ...prev,
-        [service]: has
-          ? current.filter((s) => s !== scope)
-          : [...current, scope],
-      };
-    });
+  /** Persist scope changes to scopes.json (MCP server watches this file) */
+  const persistScopes = useCallback((newScopes: Record<string, string[]>) => {
+    setSyncing(true);
+    fetch("/api/scopes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newScopes),
+    })
+      .then(() => {
+        setLastSynced(new Date().toLocaleTimeString());
+        setSyncing(false);
+      })
+      .catch(() => setSyncing(false));
   }, []);
+
+  const handleToggle = useCallback(
+    (service: string, scope: string) => {
+      setLocalScopes((prev) => {
+        const current = prev[service] ?? [];
+        const has = current.includes(scope);
+        const updated = {
+          ...prev,
+          [service]: has
+            ? current.filter((s) => s !== scope)
+            : [...current, scope],
+        };
+
+        // Debounce: persist after 300ms of no toggles
+        if (syncTimeout.current) clearTimeout(syncTimeout.current);
+        syncTimeout.current = setTimeout(() => persistScopes(updated), 300);
+
+        return updated;
+      });
+    },
+    [persistScopes]
+  );
 
   // Recompute tool availability based on local (toggled) scopes
   const computedTools = allTools.map((tool) => {
@@ -56,9 +81,6 @@ export default function DashboardPage() {
 
   const availableCount = computedTools.filter((t) => t.available).length;
   const hiddenCount = computedTools.length - availableCount;
-
-  // Detect if user has toggled away from server state
-  const hasLocalChanges = JSON.stringify(localScopes) !== JSON.stringify(serverScopes);
 
   return (
     <div className="min-h-screen">
@@ -80,6 +102,18 @@ export default function DashboardPage() {
           {/* Live stats */}
           {!loading && (
             <div className="flex items-center gap-4 text-sm">
+              {syncing && (
+                <div className="flex items-center gap-1.5 text-amber-400 text-xs animate-pulse">
+                  <Zap className="h-3 w-3" />
+                  Syncing...
+                </div>
+              )}
+              {lastSynced && !syncing && (
+                <div className="flex items-center gap-1.5 text-emerald-400/60 text-xs">
+                  <Zap className="h-3 w-3" />
+                  Live — synced {lastSynced}
+                </div>
+              )}
               <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5 border border-emerald-500/20">
                 <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="text-emerald-400 font-medium">{availableCount}</span>
@@ -112,14 +146,8 @@ export default function DashboardPage() {
           <SectionHeader
             icon={<Shield className="h-4 w-4" />}
             title="Scope Control"
-            subtitle="Toggle scopes to control what the AI can see — Authorization by Omission in action"
+            subtitle="Toggle scopes to control what the AI can see — changes apply to the MCP server in real-time"
           />
-          {hasLocalChanges && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-sm text-amber-400">
-              <span>Scope changes are previewed locally.</span>
-              <span className="text-amber-400/60">Restart the MCP server to apply.</span>
-            </div>
-          )}
           <ScopeToggles grantedScopes={localScopes} onToggle={handleToggle} />
         </section>
 
